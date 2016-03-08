@@ -9,12 +9,12 @@ import (
 	//"strings"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
+	//"fmt"
 )
 
 type user struct{
-	name string
-	age string
+	Name string
+	Age string
 }
 var htmlTest *template.Template
 var htmlTest2 *template.Template
@@ -51,42 +51,49 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func postLogin(w http.ResponseWriter, r * http.Request){
+func postLogin(w http.ResponseWriter, r *http.Request){
 	var err error
 
 	cookie, err := r.Cookie("session-fino")
 
 	if(err == http.ErrNoCookie){
-		UUIDCookie(w,r)
+		http.Redirect(w,r,"/login/",303)
+		return
 	}
 
+	htmlTest2.Execute(w,nil)
+	if(err != nil){
+		log.Panic(err)
+	}
 
 	currUser := user{
-		name: r.FormValue("name"),
-		age: r.FormValue("age"),
+		Name: r.FormValue("name"),
+		Age: r.FormValue("age"),
 	}
-
 
 	userJSON, err := json.Marshal(currUser)
 	if(err != nil){
 		log.Panic(err)
 	}
 
-	//I DOnt think the marshal is working correctly all i get is base64 for {}
-	fmt.Fprint(w, userJSON)
-
 	userJSONString := base64.StdEncoding.EncodeToString(userJSON)
 
-
-	//uuid := strings.Split(cookie.Value, "|")[0]
 	cookie.Value = cookie.Value + "|" + userJSONString
 
-	http.SetCookie(w, cookie)
 
-	htmlTest2.Execute(w,nil)
-	if(err != nil){
-		log.Panic(err)
+	newCookie := &http.Cookie{
+		Name: "session-fino",
+		Value: cookie.Value,
+		HttpOnly: true,
+		//Secure: true
 	}
+
+	//if i just update the original cookie it doesn't set
+	//my new cookie is not being set
+	//why Can't i set these cookies......
+	http.SetCookie(w, newCookie)
+	//fmt.Fprintln(w, cookie)
+
 }
 
 func UUIDCookie(w http.ResponseWriter, r * http.Request){
@@ -112,4 +119,6 @@ func UUIDCookie(w http.ResponseWriter, r * http.Request){
 		//we set the cookie on the users pc
 		http.SetCookie(w, cookie)
 	}
+
+	http.Redirect(w,r,"/login/", 303)
 }
