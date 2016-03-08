@@ -6,21 +6,23 @@ import (
 	"html/template"
 	"log"
 	"github.com/nu7hatch/gouuid"
+"strings"
 )
 
 var htmlTest *template.Template
 var htmlTest2 *template.Template
+
 //func init() {
 func main(){
 	var err error
 
-	htmlTest, err = template.ParseFiles("test.html")
+	htmlTest, err = template.ParseFiles("login.html")
 
 	if(err != nil){
 		log.Panic(err)
 	}
 
-	htmlTest2, err = template.ParseFiles("test2.html")
+	htmlTest2, err = template.ParseFiles("postlogin.html")
 	if(err != nil){
 		log.Panic(err)
 	}
@@ -28,8 +30,8 @@ func main(){
 
 	http.HandleFunc("/", UUIDCookie)
 
-	http.HandleFunc("/feels/", handler)
-	http.HandleFunc("/feels/test2.html", doIcare)
+	http.HandleFunc("/login/", handler)
+	http.HandleFunc("/login/postlogin.html", postLogin)
 	http.ListenAndServe(":9090", nil)
 }
 
@@ -42,8 +44,21 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func doIcare(w http.ResponseWriter, r * http.Request){
+func postLogin(w http.ResponseWriter, r * http.Request){
 	var err error
+
+	cookie, err := r.Cookie("session-fino")
+
+	if(err == http.ErrNoCookie){
+		UUIDCookie(w,r)
+	}
+	uuid := strings.Split(cookie.Value, "|")[0]
+	name := r.FormValue("name")
+	age := r.FormValue("age")
+
+	cookie.Value = uuid + "|" + name + "|" + age
+
+	http.SetCookie(w, cookie)
 
 	htmlTest2.Execute(w,nil)
 	if(err != nil){
@@ -51,11 +66,11 @@ func doIcare(w http.ResponseWriter, r * http.Request){
 	}
 }
 
-func UUIDCookie(w http.ResponseWriter, req * http.Request){
+func UUIDCookie(w http.ResponseWriter, r * http.Request){
 
 
 	//checking if cookie UUID exists
-	cookie, err := req.Cookie("session-fino")
+	cookie, err := r.Cookie("session-fino")
 
 	//if the cookie does not exist we make a new and assign it a UUID using the imported gouuid thingy
 	if(err == http.ErrNoCookie){
