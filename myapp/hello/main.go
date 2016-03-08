@@ -87,7 +87,8 @@ func postLogin(w http.ResponseWriter, r *http.Request){
 		HttpOnly: true,
 		//Secure: true
 	}
-
+	//the values are correct everything gets converted ok
+	//but i Cant set the cookie for some reason :((((((((
 	//if i just update the original cookie it doesn't set
 	//my new cookie is not being set
 	//why Can't i set these cookies......
