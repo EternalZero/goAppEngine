@@ -6,9 +6,16 @@ import (
 	"html/template"
 	"log"
 	"github.com/nu7hatch/gouuid"
-"strings"
+	//"strings"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 )
 
+type user struct{
+	name string
+	age string
+}
 var htmlTest *template.Template
 var htmlTest2 *template.Template
 
@@ -52,11 +59,27 @@ func postLogin(w http.ResponseWriter, r * http.Request){
 	if(err == http.ErrNoCookie){
 		UUIDCookie(w,r)
 	}
-	uuid := strings.Split(cookie.Value, "|")[0]
-	name := r.FormValue("name")
-	age := r.FormValue("age")
 
-	cookie.Value = uuid + "|" + name + "|" + age
+
+	currUser := user{
+		name: r.FormValue("name"),
+		age: r.FormValue("age"),
+	}
+
+
+	userJSON, err := json.Marshal(currUser)
+	if(err != nil){
+		log.Panic(err)
+	}
+
+	//I DOnt think the marshal is working correctly all i get is base64 for {}
+	fmt.Fprint(w, userJSON)
+
+	userJSONString := base64.StdEncoding.EncodeToString(userJSON)
+
+
+	//uuid := strings.Split(cookie.Value, "|")[0]
+	cookie.Value = cookie.Value + "|" + userJSONString
 
 	http.SetCookie(w, cookie)
 
