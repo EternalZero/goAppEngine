@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"log"
 	"github.com/nu7hatch/gouuid"
-	//"strings"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
