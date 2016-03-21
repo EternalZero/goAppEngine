@@ -52,6 +52,7 @@ func main(){
 	http.HandleFunc("/checkCookie", verifyMessage)
 	http.HandleFunc("/loginCheck", loginCheck)
 	http.HandleFunc("/corruptCookie", corruptCookie)
+	http.HandleFunc("/logout", logout)
 	http.ListenAndServe(":9090", nil)
 }
 
@@ -206,46 +207,62 @@ func loginCheck(w http.ResponseWriter, r * http.Request){
 			HttpOnly: true,
 			//Secure: true,
 		}
+
+		http.SetCookie(w,cookie)
 	}
 
 	if(r.Method == "POST"){
 		password := r.FormValue("password")
 
-		if(password == "123456"){
-			cookie = & http.Cookie{
+		if(password == "123456") {
+			cookie = &http.Cookie{
 				Name: "logged-in",
 				Value: "1",
 				HttpOnly: true,
 				//Secure: true,
 			}
+		}else{
+			getInfo(w,r)
+			return
 		}
-	}
-
-
-	if(r.URL.Path == "/logout"){
-		cookie = & http.Cookie{
-			Name: "logged-in",
-			Value: "0",
-			MaxAge: -1,
-			HttpOnly: true,
-			//Secure: true,
-		}
-		http.SetCookie(w,cookie)
-		http.Redirect(w,r, "/", 303)
-		return
 	}
 
 	http.SetCookie(w, cookie)
-
 
 	if(cookie.Value == "0") {
 
 		getInfo(w,r)
 		return
-		}
+	}
 
 	if(cookie.Value == "1"){
 		postLogin(w,r)
 		return
 	}
+}
+
+func logout(w http.ResponseWriter, r * http.Request){
+
+	cookie, err := r.Cookie("logged-in")
+
+	if(err != http.ErrNoCookie){
+		cookie = & http.Cookie{
+			Name: "logged-in",
+			Value: "0",
+			HttpOnly: true,
+			//Secure: true,
+		}
+
+		http.SetCookie(w,cookie)
+	}
+
+	cookie = & http.Cookie{
+		Name: "logged-in",
+		Value: "0",
+		MaxAge: -1,
+		HttpOnly: true,
+		//Secure: true,
+	}
+	http.SetCookie(w,cookie)
+	http.Redirect(w,r, "/", 303)
 }
