@@ -14,10 +14,20 @@ import (
 	"strings"
 )
 
-type user struct{
-	Name string
-	Age string
+type user struct {
+	userName string
+	password string
 }
+
+//we are adding user to our session data
+//so now we can access the members of user through sessionData objects
+type sessionData struct{
+	user
+	loggedIn bool
+	loginFail bool
+}
+
+
 var htmlTest *template.Template
 var htmlTest2 *template.Template
 
@@ -40,6 +50,7 @@ func main(){
 	http.HandleFunc("/", getInfo)
 	http.HandleFunc("/postlogin.html", postLogin)
 	http.HandleFunc("/checkCookie", verifyMessage)
+	http.HandleFunc("/loginCheck", loginCheck)
 	http.HandleFunc("/corruptCookie", corruptCookie)
 	http.ListenAndServe(":9090", nil)
 }
@@ -84,8 +95,8 @@ func getInfo(w http.ResponseWriter, r * http.Request){
 
 	var err error
 
-	err = htmlTest.Execute(w,nil)
-	if(err != nil){
+	err = htmlTest.Execute(w, nil)
+	if (err != nil) {
 		log.Panic(err)
 	}
 }
@@ -93,8 +104,8 @@ func getInfo(w http.ResponseWriter, r * http.Request){
 func marshallUserType(r * http.Request) string{
 
 	currUser := user{
-		Name: r.FormValue("name"),
-		Age: r.FormValue("age"),
+		userName: r.FormValue("userName"),
+		password: r.FormValue("password"),
 	}
 
 	userJSON, err := json.Marshal(currUser)
@@ -113,10 +124,10 @@ func marshallUserType(r * http.Request) string{
 
 //this function verifies the cookie by comparing the message recieved and checking that it matches the
 //hmac code created by our hmac function
-func verifyMessage(w http.ResponseWriter, req * http.Request){
+func verifyMessage(w http.ResponseWriter, r * http.Request){
 
 	//asking for the specific cookie
-	cookie, err := req.Cookie("session-fino")
+	cookie, err := r.Cookie("session-fino")
 
 	//if the cookie doesn't exist we offend the user
 	if(err == http.ErrNoCookie){
@@ -167,9 +178,9 @@ func getHMAC(data string) string{
 }
 
 
-func corruptCookie(w http.ResponseWriter, req * http.Request){
+func corruptCookie(w http.ResponseWriter, r * http.Request){
 	//asking for the specific cookie
-	cookie, err := req.Cookie("session-fino")
+	cookie, err := r.Cookie("session-fino")
 
 	//if the cookie doesn't exist we offend the user
 	if(err == http.ErrNoCookie){
@@ -182,4 +193,59 @@ func corruptCookie(w http.ResponseWriter, req * http.Request){
 
 	fmt.Fprint(w, "Your cookie has been corrupted :)")
 
+}
+
+func loginCheck(w http.ResponseWriter, r * http.Request){
+
+	cookie, err := r.Cookie("logged-in")
+
+	if(err != http.ErrNoCookie){
+		cookie = & http.Cookie{
+			Name: "logged-in",
+			Value: "0",
+			HttpOnly: true,
+			//Secure: true,
+		}
+	}
+
+	if(r.Method == "POST"){
+		password := r.FormValue("password")
+
+		if(password == "123456"){
+			cookie = & http.Cookie{
+				Name: "logged-in",
+				Value: "1",
+				HttpOnly: true,
+				//Secure: true,
+			}
+		}
+	}
+
+
+	if(r.URL.Path == "/logout"){
+		cookie = & http.Cookie{
+			Name: "logged-in",
+			Value: "0",
+			MaxAge: -1,
+			HttpOnly: true,
+			//Secure: true,
+		}
+		http.SetCookie(w,cookie)
+		http.Redirect(w,r, "/", 303)
+		return
+	}
+
+	http.SetCookie(w, cookie)
+
+
+	if(cookie.Value == "0") {
+
+		getInfo(w,r)
+		return
+		}
+
+	if(cookie.Value == "1"){
+		postLogin(w,r)
+		return
+	}
 }
