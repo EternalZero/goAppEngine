@@ -50,7 +50,7 @@ func main(){
 	http.HandleFunc("/", getInfo)
 	http.HandleFunc("/postlogin.html", postLogin)
 	http.HandleFunc("/checkCookie", verifyMessage)
-	http.HandleFunc("/loginCheck", loginCheck)
+	//http.HandleFunc("/loginCheck", loginCheck)
 	http.HandleFunc("/corruptCookie", corruptCookie)
 	http.HandleFunc("/logout", logout)
 	http.ListenAndServe(":9090", nil)
@@ -60,6 +60,11 @@ func main(){
 func postLogin(w http.ResponseWriter, r *http.Request){
 
 	var err error
+
+	if(!loginCheck(w,r)){
+		getInfo(w,r)
+		return
+	}
 
 	//checking if cookie exists
 	cookie, err := r.Cookie("session-fino")
@@ -196,7 +201,7 @@ func corruptCookie(w http.ResponseWriter, r * http.Request){
 
 }
 
-func loginCheck(w http.ResponseWriter, r * http.Request){
+func loginCheck(w http.ResponseWriter, r * http.Request)(bool){
 
 	cookie, err := r.Cookie("logged-in")
 
@@ -209,6 +214,7 @@ func loginCheck(w http.ResponseWriter, r * http.Request){
 		}
 
 		http.SetCookie(w,cookie)
+		return false
 	}
 
 	if(r.Method == "POST"){
@@ -221,24 +227,23 @@ func loginCheck(w http.ResponseWriter, r * http.Request){
 				HttpOnly: true,
 				//Secure: true,
 			}
+			return true
 		}else{
-			getInfo(w,r)
-			return
+			return false
 		}
 	}
 
 	http.SetCookie(w, cookie)
 
 	if(cookie.Value == "0") {
-
-		getInfo(w,r)
-		return
+		return false
 	}
 
 	if(cookie.Value == "1"){
-		postLogin(w,r)
-		return
+		return true
 	}
+
+	return false
 }
 
 func logout(w http.ResponseWriter, r * http.Request){
