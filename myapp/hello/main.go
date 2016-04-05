@@ -34,7 +34,7 @@ var htmlTest *template.Template
 var htmlTest2 *template.Template
 
 func init() {
-//func main() {
+	//func main() {
 
 	htmlTest, _ = template.ParseFiles("login.html")
 	htmlTest2, _ = template.ParseFiles("postlogin.html")
