@@ -1,16 +1,19 @@
-package main
-//package hello
+//package main
+
+package hello
 
 import (
-	"net/http"
 	"html/template"
-	"log"
-	"github.com/nu7hatch/gouuid"
+	"net/http"
+	//"log"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"crypto/hmac"
-	"crypto/sha256"
+	"github.com/nu7hatch/gouuid"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 	"strings"
 )
 
@@ -21,123 +24,190 @@ type user struct {
 
 //we are adding user to our session data
 //so now we can access the members of user through sessionData objects
-type sessionData struct{
-	user
-	loggedIn bool
+type sessionData struct {
+	thisUser  user
+	loggedIn  bool
 	loginFail bool
 }
-
 
 var htmlTest *template.Template
 var htmlTest2 *template.Template
 
-//func init() {
-func main(){
-	var err error
+func init() {
+//func main() {
 
-	htmlTest, err = template.ParseFiles("login.html")
-
-	if(err != nil){
-		log.Panic(err)
-	}
-
-	htmlTest2, err = template.ParseFiles("postlogin.html")
-	if(err != nil){
-		log.Panic(err)
-	}
-
+	htmlTest, _ = template.ParseFiles("login.html")
+	htmlTest2, _ = template.ParseFiles("postlogin.html")
 
 	http.HandleFunc("/", getInfo)
-	http.HandleFunc("/postlogin.html", postLogin)
-	http.HandleFunc("/checkCookie", verifyMessage)
-	//http.HandleFunc("/loginCheck", loginCheck)
-	http.HandleFunc("/corruptCookie", corruptCookie)
+	http.HandleFunc("/postLogin", postLogin)
 	http.HandleFunc("/logout", logout)
-	http.ListenAndServe(":9090", nil)
+
+	http.HandleFunc("/checkUUID", verifyMessage)
+	http.HandleFunc("/corruptCookie", corruptCookie)
+
+	http.Handle("/favicon.ico", http.NotFoundHandler())
+	http.ListenAndServe(":8080", nil)
 }
 
+func getInfo(w http.ResponseWriter, r *http.Request) {
 
-func postLogin(w http.ResponseWriter, r *http.Request){
+	var err error
+	context := appengine.NewContext(r)
+
+	err = htmlTest.Execute(w, nil)
+	if err != nil {
+		log.Errorf(context, "error executing htmlTest template", err)
+		http.Redirect(w, r, "/", 303)
+	}
+}
+
+func postLogin(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 
-	if(!loginCheck(w,r)){
-		getInfo(w,r)
+	context := appengine.NewContext(r)
+
+	if !loginCheck(w, r) {
+		fmt.Println(w, "You got the password wrong :(")
+		http.Redirect(w, r, "/", 303)
 		return
 	}
 
 	//checking if cookie exists
-	cookie, err := r.Cookie("session-fino")
+	cookie, err := r.Cookie("session-uuid")
 
 	//if the cookie does not exist we make a new and assign it a UUID using the imported gouuid thingy
-	if(err!=nil){
-		fmt.Println("im making a cookie")
-		//we ignore the error that the NewV4 function returns. we make a randomly generated UUID
+	if err != nil {
+		//fmt.Println("im making a cookie")
+		//i ignore the error that the NewV4 function returns. we make a randomly generated UUID
 		uuid, _ := uuid.NewV4()
 
 		//we make a new cookie using a composite literal and give its address to a pointer
 		cookie = &http.Cookie{
-			Name: "session-fino",
-			Value: uuid.String() + "|" + marshallUserType(r),
+			Name:     "session-uuid",
+			Value:    uuid.String(),
 			HttpOnly: true,
 			//can't use secure cause we don't have https available
 			// /Secure: true,
 		}
 
 		fmt.Println(cookie)
-		cookie.Value = cookie.Value + "|" + getHMAC(cookie.Value);
+		cookie.Value = cookie.Value + "|" + getHMAC(cookie.Value)
 	}
 
 	http.SetCookie(w, cookie)
 	//we set the cookie on the users pc
 
-	err = htmlTest2.Execute(w,nil)
-	if(err != nil){
-		//log.Panic(err)
+	err = htmlTest2.Execute(w, nil)
+	if err != nil {
+		log.Errorf(context, "error executing htmlTest2 template", err)
+		http.Redirect(w, r, "/", 303)
+		return
 	}
 }
 
-func getInfo(w http.ResponseWriter, r * http.Request){
+func marshallUserType(w http.ResponseWriter, r *http.Request) string {
 
-	var err error
+	context := appengine.NewContext(r)
 
-	err = htmlTest.Execute(w, nil)
-	if (err != nil) {
-		log.Panic(err)
-	}
-}
-
-func marshallUserType(r * http.Request) string{
-
-	currUser := user{
-		userName: r.FormValue("userName"),
-		password: r.FormValue("password"),
+	currUser := sessionData{
+		thisUser: user{
+			userName: r.FormValue("username"),
+			password: r.FormValue("password"),
+		},
+		loggedIn:  false,
+		loginFail: false,
 	}
 
 	userJSON, err := json.Marshal(currUser)
-	if(err != nil){
-		log.Panic(err)
+	if err != nil {
+		log.Errorf(context, "error marshalling user object/instance", err)
+		http.Redirect(w, r, "/", 303)
 	}
 
-	userJSONString := base64.StdEncoding.EncodeToString(userJSON)
-
-	return userJSONString
+	return string(userJSON)
 }
 
+func loginCheck(w http.ResponseWriter, r *http.Request) bool {
+
+	cookie, err := r.Cookie("session-login")
+
+	if err != http.ErrNoCookie {
+		cookie = &http.Cookie{
+			Name:     "session-login",
+			Value:    encodeToB64(marshallUserType(w, r)),
+			HttpOnly: true,
+			//Secure: true,
+		}
+	}
+
+	jsonData, _ := base64.StdEncoding.DecodeString(cookie.Value)
+	var currSession sessionData
+	json.Unmarshal(jsonData, currSession)
+
+	if r.Method == "POST" {
+		password := r.FormValue("password")
+
+		if password == "123456" {
+			currSession.loggedIn = true
+			currSession.loginFail = false
+		} else {
+			currSession.loggedIn = false
+			currSession.loginFail = true
+		}
+	}
+
+	loggedIn := currSession.loggedIn
+
+	newJSON, _ := json.Marshal(currSession)
+
+	cookie.Value = encodeToB64(string(newJSON))
+
+	http.SetCookie(w, cookie)
+
+	return loggedIn
+}
+
+func logout(w http.ResponseWriter, r *http.Request) {
+
+	cookie, err := r.Cookie("session-login")
+
+	if err != http.ErrNoCookie {
+		cookie = &http.Cookie{
+			Name:     "session-login",
+			Value:    encodeToB64(marshallUserType(w, r)),
+			HttpOnly: true,
+			//Secure: true,
+		}
+	} else {
+		jsonData, _ := base64.StdEncoding.DecodeString(cookie.Value)
+		var currSession sessionData
+		json.Unmarshal(jsonData, currSession)
+		currSession.loggedIn = false
+	}
+
+	http.SetCookie(w, cookie)
+}
+
+func encodeToB64(userJSON string) string {
+	userJSONString := base64.StdEncoding.EncodeToString([]byte(userJSON))
+	return userJSONString
+}
 
 // I EDITED THIS CODE FROM my PREVIOUS HW
 // MAKE SURE YOU KNOW WHAT I CHANGED!! its down there with the indexes being hmaced
 
 //this function verifies the cookie by comparing the message recieved and checking that it matches the
 //hmac code created by our hmac function
-func verifyMessage(w http.ResponseWriter, r * http.Request){
+func verifyMessage(w http.ResponseWriter, r *http.Request) {
 
 	//asking for the specific cookie
-	cookie, err := r.Cookie("session-fino")
+	cookie, err := r.Cookie("session-uuid")
 
 	//if the cookie doesn't exist we offend the user
-	if(err == http.ErrNoCookie){
-		fmt.Fprint(w, "You didn't give me a cookie. jerk")
+	if err == http.ErrNoCookie {
+		fmt.Fprint(w, "You didn't give me the uuid cookie. jerk1!")
 		return
 	}
 
@@ -150,14 +220,14 @@ func verifyMessage(w http.ResponseWriter, r * http.Request){
 	//fmt.Fprintln(w,"message and hmac: ", messageAndHMAC)
 
 	//we hash the message we got and save it
-	verifier := getHMAC(messageAndHMAC[0] + messageAndHMAC[1])
+	verifier := getHMAC(messageAndHMAC[0])
 
 	//fmt.Fprintln(w, "verifier:", verifier)
 	//fmt.Fprintln(w, "hmac key from cookie:", messageAndHMAC[1])
 
 	//we compare the message we calculated to the one we are supposed to match
-	//**** REMEMBER WE HAVE MORE DATA. we are working with UUID | DATA | HMAC
-	if(messageAndHMAC[2] != verifier){
+	//**** we are working with UUID | HMAC
+	if messageAndHMAC[1] != verifier {
 		//if the message calculated hmac code doesn't match the one in the cookie
 		//it means the user altered the cookie
 		fmt.Fprint(w, "you messed up the cookie.... Way to go...")
@@ -166,11 +236,10 @@ func verifyMessage(w http.ResponseWriter, r * http.Request){
 	//if the message calculated hmac matches the one in the cookie then everything is fine
 	fmt.Fprint(w, "Everything seems fine. Carry on..")
 
-
 }
 
 //returns a string that is hmac code created using a "secret" key and some data
-func getHMAC(data string) string{
+func getHMAC(data string) string {
 	//making a new hash using the sha256 algorithm and using the key provided
 	h := hmac.New(sha256.New, []byte("123456"))
 
@@ -183,91 +252,19 @@ func getHMAC(data string) string{
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-
-func corruptCookie(w http.ResponseWriter, r * http.Request){
+func corruptCookie(w http.ResponseWriter, r *http.Request) {
 	//asking for the specific cookie
 	cookie, err := r.Cookie("session-fino")
 
 	//if the cookie doesn't exist we offend the user
-	if(err == http.ErrNoCookie){
+	if err == http.ErrNoCookie {
 		fmt.Fprint(w, "You didn't give me a cookie. jerk")
 		return
 	}
 	cookie.Value = cookie.Value + "corrupted"
 
-	http.SetCookie(w,cookie)
+	http.SetCookie(w, cookie)
 
 	fmt.Fprint(w, "Your cookie has been corrupted :)")
 
-}
-
-func loginCheck(w http.ResponseWriter, r * http.Request)(bool){
-
-	cookie, err := r.Cookie("logged-in")
-
-	if(err != http.ErrNoCookie){
-		cookie = & http.Cookie{
-			Name: "logged-in",
-			Value: "0",
-			HttpOnly: true,
-			//Secure: true,
-		}
-
-		http.SetCookie(w,cookie)
-		return false
-	}
-
-	if(r.Method == "POST"){
-		password := r.FormValue("password")
-
-		if(password == "123456") {
-			cookie = &http.Cookie{
-				Name: "logged-in",
-				Value: "1",
-				HttpOnly: true,
-				//Secure: true,
-			}
-			return true
-		}else{
-			return false
-		}
-	}
-
-	http.SetCookie(w, cookie)
-
-	if(cookie.Value == "0") {
-		return false
-	}
-
-	if(cookie.Value == "1"){
-		return true
-	}
-
-	return false
-}
-
-func logout(w http.ResponseWriter, r * http.Request){
-
-	cookie, err := r.Cookie("logged-in")
-
-	if(err != http.ErrNoCookie){
-		cookie = & http.Cookie{
-			Name: "logged-in",
-			Value: "0",
-			HttpOnly: true,
-			//Secure: true,
-		}
-
-		http.SetCookie(w,cookie)
-	}
-
-	cookie = & http.Cookie{
-		Name: "logged-in",
-		Value: "0",
-		MaxAge: -1,
-		HttpOnly: true,
-		//Secure: true,
-	}
-	http.SetCookie(w,cookie)
-	http.Redirect(w,r, "/", 303)
 }
