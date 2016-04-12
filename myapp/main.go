@@ -30,14 +30,11 @@ type sessionData struct {
 	loginFail bool
 }
 
-var htmlTest *template.Template
-var htmlTest2 *template.Template
+var tpl *template.Template
 
 func init() {
-	//func main() {
 
-	htmlTest, _ = template.ParseFiles("login.html")
-	htmlTest2, _ = template.ParseFiles("postlogin.html")
+	tpl = template.Must(template.ParseFiles("login.html", "postlogin.html"))
 
 	http.HandleFunc("/", getInfo)
 	http.HandleFunc("/postLogin", postLogin)
@@ -55,7 +52,8 @@ func getInfo(w http.ResponseWriter, r *http.Request) {
 	var err error
 	context := appengine.NewContext(r)
 
-	err = htmlTest.Execute(w, nil)
+	fmt.Fprintln(w, "printing stuff")
+	err = tpl.ExecuteTemplate(w, "login.html", nil)
 	if err != nil {
 		log.Errorf(context, "error executing htmlTest template", err)
 		http.Redirect(w, r, "/", 303)
@@ -68,7 +66,7 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 
 	context := appengine.NewContext(r)
 
-	if !loginCheck(w, r) {
+	if (!loginCheck(w, r)) {
 		fmt.Println(w, "You got the password wrong :(")
 		http.Redirect(w, r, "/", 303)
 		return
@@ -99,7 +97,7 @@ func postLogin(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, cookie)
 	//we set the cookie on the users pc
 
-	err = htmlTest2.Execute(w, nil)
+	err = tpl.ExecuteTemplate(w, "postlogin.html", nil)
 	if err != nil {
 		log.Errorf(context, "error executing htmlTest2 template", err)
 		http.Redirect(w, r, "/", 303)
