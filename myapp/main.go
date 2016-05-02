@@ -1,8 +1,12 @@
-package mem
+package main
 
 import (
-	"google.golang.org/appengine"
-	"google.golang.org/appengine/log"
+	"encoding/json"
+	"github.com/dustin/go-humanize"
+	"github.com/julienschmidt/httprouter"
+	//"google.golang.org/appengine"
+	//"google.golang.org/appengine/datastore"
+	//"google.golang.org/appengine/log"
 	"html/template"
 	"net/http"
 )
@@ -10,102 +14,44 @@ import (
 var tpl *template.Template
 
 func init() {
-	tpl, _ = template.ParseGlob("templates/*.html")
-
-	http.HandleFunc("/", index)
-	http.HandleFunc("/login", login)
-	http.HandleFunc("/logout", logout)
+	r := httprouter.New()
+	http.Handle("/", r)
+	r.GET("/", home)
+	r.GET("/form/login", login)
+	r.GET("/form/signup", signup)
+	r.POST("/api/checkusername", checkUserName)
+	r.POST("/api/createuser", createUser)
+	r.POST("/api/login", loginProcess)
+	r.GET("/api/logout", logout)
 	http.Handle("/favicon.ico", http.NotFoundHandler())
-	fs := http.FileServer(http.Dir("assets"))
-	http.Handle("/imgs/", fs)
-	http.ListenAndServe(":8080", nil)
+	http.Handle("/public/", http.StripPrefix("/public", http.FileServer(http.Dir("public/"))))
+
+	tpl = template.New("roottemplate")
+	tpl = tpl.Funcs(template.FuncMap{
+		"humanize_time": humanize.Time,
+	})
+
+	tpl = template.Must(tpl.ParseGlob("templates/html/*.html"))
 }
 
-func index(res http.ResponseWriter, req *http.Request) {
+func home(res http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	//ctx := appengine.NewContext(req)
 
-	ctx := appengine.NewContext(req)
-	cookie, err := getCookie(res, req)
-	if err != nil {
-		// problem retrieving cookie
-		log.Errorf(ctx, "ERROR index getCookie: %s", err)
-		http.Error(res, err.Error(), http.StatusInternalServerError)
-		return
+	// get session
+	memItem, err := getSession(req)
+	var sd SessionData
+	if err == nil {
+		// logged in
+		json.Unmarshal(memItem.Value, &sd)
+		sd.LoggedIn = true
 	}
-
-	id := cookie.Value
-
-	if req.Method == "POST" {
-		src, _, err := req.FormFile("data")
-		if err != nil {
-			log.Errorf(ctx, "ERROR index req.FormFile: %s", err)
-			// TODO: create error page to show user
-			http.Redirect(res, req, "/", http.StatusSeeOther)
-			return
-		}
-		err = uploadPhoto(src, id, req)
-		if err != nil {
-			log.Errorf(ctx, "ERROR index uploadPhoto: %s", err)
-			// expired cookie may exist on client
-			http.Redirect(res, req, "/logout", http.StatusSeeOther)
-			return
-		}
-	}
-
-	m, err := retrieveMemc(id, req)
-	if err != nil {
-		log.Errorf(ctx, "ERROR index retrieveMemc: %s", err)
-		// expired cookie may exist on client
-		http.Redirect(res, req, "/logout", http.StatusSeeOther)
-		return
-	}
-	tpl.ExecuteTemplate(res, "index.html", m)
+	tpl.ExecuteTemplate(res, "home.html", &sd)
 }
 
-func logout(res http.ResponseWriter, req *http.Request) {
-	cookie, err := newVisitor(req)
-	if err != nil {
-		ctx := appengine.NewContext(req)
-		log.Errorf(ctx, "ERROR logout getCookie: %s", err)
-		http.Error(res, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	http.SetCookie(res, cookie)
-	http.Redirect(res, req, "/", http.StatusSeeOther)
+func login(res http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	serveTemplate(res, req, "login.html")
 }
 
-func login(res http.ResponseWriter, req *http.Request) {
-
-	ctx := appengine.NewContext(req)
-	cookie, err := getCookie(res, req)
-	if err != nil {
-		log.Errorf(ctx, "ERROR login getCookie: %s", err)
-		http.Error(res, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	id := cookie.Value
-
-	if req.Method == "POST" && req.FormValue("password") == "secret" {
-		m, err := retrieveMemc(id, req)
-		if err != nil {
-			log.Errorf(ctx, "ERROR index retrieveMemc: %s", err)
-			// expired cookie may exist on client
-			http.Redirect(res, req, "/logout", http.StatusSeeOther)
-			return
-		}
-		m.State = true
-		m.Name = req.FormValue("name")
-
-		cookie, err := currentVisitor(m, id, req)
-		if err != nil {
-			log.Errorf(ctx, "ERROR login currentVisitor: %s", err)
-			http.Redirect(res, req, "/", http.StatusSeeOther)
-			return
-		}
-		http.SetCookie(res, cookie)
-
-		http.Redirect(res, req, "/", http.StatusSeeOther)
-		return
-	}
-	tpl.ExecuteTemplate(res, "login.html", nil)
+func signup(res http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	serveTemplate(res, req, "signup.html")
 }

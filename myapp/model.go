@@ -1,7 +1,19 @@
-package mem
+package main
 
-type model struct {
-	Name     string
-	State    bool
-	Pictures []string
+import ()
+
+type User struct {
+	Email    string
+	UserName string `datastore:"-"`
+	Password string `json:"-"`
 }
+
+type SessionData struct {
+	User
+	LoggedIn      bool
+	LoginFail     bool
+	//not sure if we need this viewinguser string
+	//ViewingUser   string
+
+}
+
