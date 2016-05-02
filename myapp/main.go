@@ -1,59 +1,111 @@
-package myapp
+package mem
 
 import (
-	//"fmt"
-	//"net/http"
-	//"google.golang.org/appengine"
-	//"google.golang.org/appengine/log"
-	//"io"
-	//"encoding/base64"
-	//"encoding/json"
-	//"crypto/sha1"
-	//"mime/multipart"
-	//"strings"
-	//"golang.org/x/net/context"
-	//"google.golang.org/cloud/storage"
+	"google.golang.org/appengine"
+	"google.golang.org/appengine/log"
 	"html/template"
 	"net/http"
 )
 
-var template1 *template.Template
+var tpl *template.Template
 
 func init() {
+	tpl, _ = template.ParseGlob("templates/*.html")
 
-	var err error
-
-	template1, err = template.ParseFiles("voteForMe.html")
-	if(err != nil){
-		//log.Fatal("parsefiles: ", err)
-		//use googles log.Errorf(faodsi)
-	}
-
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/", index)
+	http.HandleFunc("/login", login)
+	http.HandleFunc("/logout", logout)
+	http.Handle("/favicon.ico", http.NotFoundHandler())
+	fs := http.FileServer(http.Dir("assets"))
+	http.Handle("/imgs/", fs)
+	http.ListenAndServe(":8080", nil)
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func index(res http.ResponseWriter, req *http.Request) {
 
-	var err error
-
-	if(r.URL.Path != "/"){
-		http.NotFound(w,r)
+	ctx := appengine.NewContext(req)
+	cookie, err := getCookie(res, req)
+	if err != nil {
+		// problem retrieving cookie
+		log.Errorf(ctx, "ERROR index getCookie: %s", err)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	template1, err = template.ParseFiles("voteForMe.html")
-	if(err != nil){
-		//log.Fatal("parsefiles: ", err)
-		//use googles log.Errorf(faodsi)
+	id := cookie.Value
+
+	if req.Method == "POST" {
+		src, _, err := req.FormFile("data")
+		if err != nil {
+			log.Errorf(ctx, "ERROR index req.FormFile: %s", err)
+			// TODO: create error page to show user
+			http.Redirect(res, req, "/", http.StatusSeeOther)
+			return
+		}
+		err = uploadPhoto(src, id, req)
+		if err != nil {
+			log.Errorf(ctx, "ERROR index uploadPhoto: %s", err)
+			// expired cookie may exist on client
+			http.Redirect(res, req, "/logout", http.StatusSeeOther)
+			return
+		}
 	}
 
-	err = template1.Execute(w, nil)
+	m, err := retrieveMemc(id, req)
+	if err != nil {
+		log.Errorf(ctx, "ERROR index retrieveMemc: %s", err)
+		// expired cookie may exist on client
+		http.Redirect(res, req, "/logout", http.StatusSeeOther)
+		return
+	}
+	tpl.ExecuteTemplate(res, "index.html", m)
+}
 
-	if(err != nil){
-		//log.Fatal("exexute: ", err)
-		//user googles log.Errorf(fjka;f)
+func logout(res http.ResponseWriter, req *http.Request) {
+	cookie, err := newVisitor(req)
+	if err != nil {
+		ctx := appengine.NewContext(req)
+		log.Errorf(ctx, "ERROR logout getCookie: %s", err)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.SetCookie(res, cookie)
+	http.Redirect(res, req, "/", http.StatusSeeOther)
+}
+
+func login(res http.ResponseWriter, req *http.Request) {
+
+	ctx := appengine.NewContext(req)
+	cookie, err := getCookie(res, req)
+	if err != nil {
+		log.Errorf(ctx, "ERROR login getCookie: %s", err)
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	id := cookie.Value
 
+	if req.Method == "POST" && req.FormValue("password") == "secret" {
+		m, err := retrieveMemc(id, req)
+		if err != nil {
+			log.Errorf(ctx, "ERROR index retrieveMemc: %s", err)
+			// expired cookie may exist on client
+			http.Redirect(res, req, "/logout", http.StatusSeeOther)
+			return
+		}
+		m.State = true
+		m.Name = req.FormValue("name")
+
+		cookie, err := currentVisitor(m, id, req)
+		if err != nil {
+			log.Errorf(ctx, "ERROR login currentVisitor: %s", err)
+			http.Redirect(res, req, "/", http.StatusSeeOther)
+			return
+		}
+		http.SetCookie(res, cookie)
+
+		http.Redirect(res, req, "/", http.StatusSeeOther)
+		return
+	}
+	tpl.ExecuteTemplate(res, "login.html", nil)
 }
