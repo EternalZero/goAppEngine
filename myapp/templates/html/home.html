@@ -37,10 +37,21 @@
         <li><a href="#atf">Home</a></li>
         <li><a href="#btf">Mission</a></li>
         <li><a href="#contacts">Contacts</a></li>
+
+        {{if .LoggedIn}}
+        <li><a href="/api//logout">Logout {{.UserName}}</a></li>
+        {{else}}
         <li><a href="/form//login">Login</a></li>
+        {{end}}
+
     </ul>
 </div>
+
 <div id="btf">
+    {{if .LoggedIn}}
+    <li><a href="/form//update">Update {{.UserName}}'s Info</a></li>
+    {{end}}
+
     <center><h2>The Mission</h2></center>
     <img src="https://storage.googleapis.com/ferrets/ferret_H.jpg">
     <!--<form method="post">

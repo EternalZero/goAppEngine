@@ -92,7 +92,7 @@ func createSession(res http.ResponseWriter, req *http.Request, user User) {
 		MaxAge: 60 * 20,
 		//		UNCOMMENT WHEN DEPLOYED:
 		//		Secure: true,
-		//		HttpOnly: true,
+				HttpOnly: true,
 	}
 	http.SetCookie(res, cookie)
 
@@ -132,6 +132,63 @@ func logout(res http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	cookie.MaxAge = -1
 	http.SetCookie(res, cookie)
 
+	// redirect
+	http.Redirect(res, req, "/", 302)
+}
+
+func updateUserInfo(res http.ResponseWriter, req* http.Request, _ httprouter.Params){
+
+	ctx := appengine.NewContext(req)
+
+	cookie, err := req.Cookie("session")
+	// cookie is not set
+	if err != nil {
+		http.Redirect(res, req, "/", 302)
+		return
+	}
+	// get session
+	memItem, err := getSession(req)
+	var sd SessionData
+	if err == nil {
+		// logged in
+		json.Unmarshal(memItem.Value, &sd)
+		sd.LoggedIn = true
+
+	user := sd.User
+	key := datastore.NewKey(ctx, "Users", user.UserName, 0, nil)
+		err = datastore.Get(ctx, key, &user)
+
+		user.Email = req.FormValue("email")
+
+		hashedPass, err := bcrypt.GenerateFromPassword([]byte(req.FormValue("password")), bcrypt.DefaultCost)
+		if err != nil {
+			log.Errorf(ctx, "error creating password: %v", err)
+			http.Error(res, err.Error(), 500)
+			return
+		}
+
+		user.Password = string(hashedPass)
+
+		key, err = datastore.Put(ctx, key, &user)
+		if err != nil {
+			log.Errorf(ctx, "error putting into datastore updating user info: %v", err)
+			http.Error(res, err.Error(), 500)
+			return
+		}
+
+		// clear the cookie
+		cookie.MaxAge = -1
+		http.SetCookie(res, cookie)
+
+		createSession(res, req, user)
+
+		fmt.Fprintln(res, "Successfully Updated Information")
+		// redirect
+		http.Redirect(res, req, "/", 302)
+		return
+	}
+
+	fmt.Fprintln(res, "Failed to update information")
 	// redirect
 	http.Redirect(res, req, "/", 302)
 }

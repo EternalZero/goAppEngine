@@ -19,8 +19,10 @@ func init() {
 	r.GET("/", home)
 	r.GET("/form/login", login)
 	r.GET("/form/signup", signup)
+	r.GET("/form/update", update)
 	r.POST("/api/checkusername", checkUserName)
 	r.POST("/api/createuser", createUser)
+	r.POST("/api/updateUserInfo", updateUserInfo)
 	r.POST("/api/login", loginProcess)
 	r.GET("/api/logout", logout)
 	http.Handle("/favicon.ico", http.NotFoundHandler())
@@ -54,4 +56,8 @@ func login(res http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 
 func signup(res http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	serveTemplate(res, req, "signup.html")
+}
+
+func update(res http.ResponseWriter, req * http.Request, _ httprouter.Params){
+	serveTemplate(res, req, "updateUserInfo.html")
 }
